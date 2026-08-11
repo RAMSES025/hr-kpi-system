@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HR Портал</title>
+    <!-- Подключаем красивый дизайн от Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<!-- Навигационная панель сверху -->
+<nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container">
+        <a class="navbar-brand" href="#">🏢 Корпоративный HR-портал</a>
+        <span class="navbar-text text-white">
+            Добро пожаловать, {{ user.full_name }}!
+        </span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="row">
+        <!-- Левая колонка: Учет времени -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body text-center d-flex flex-column justify-content-center">
+                    <h5 class="card-title">Учет рабочего времени</h5>
+                    <p class="text-muted">Нажмите кнопку, когда приступите к работе.</p>
+                    
+                    <form action="/web/clock-in/{{ user.id }}" method="post">
+                        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3">
+                            ▶ Начать рабочий день
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Правая колонка: Информация о сотруднике -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="card-title border-bottom pb-2">Ваш профиль</h5>
+                    <ul class="list-unstyled mt-3">
+                        <li class="mb-2"><strong>Должность:</strong> {{ user.role.value }}</li>
+                        <li class="mb-2"><strong>Остаток отпуска:</strong> {{ user.vacation_balance }} дней</li>
+                        <li class="mb-2"><strong>Текущий оклад:</strong> {{ user.base_salary }} ₽</li>
+                    </ul>
+                    <a href="#" class="btn btn-outline-secondary btn-sm w-100 mt-2">Запросить отпуск</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
