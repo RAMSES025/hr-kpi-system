@@ -37,6 +37,36 @@
             </div>
         </div>
 
+        <!-- Карточка запроса отсутствия -->
+<div class="card mt-4 shadow-sm">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="card-title mb-0">Запросить отсутствие</h5>
+    </div>
+    <div class="card-body">
+        <form action="/web/request-absence/{{ user.id }}" method="POST">
+            <div class="mb-3">
+                <label class="form-label">Тип отсутствия</label>
+                <select name="reason" class="form-select" required>
+                    <option value="Оплачиваемый отпуск">Оплачиваемый отпуск</option>
+                    <option value="Больничный">Больничный</option>
+                    <option value="Отгул (за свой счет)">Отгул (за свой счет)</option>
+                </select>
+            </div>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Дата начала</label>
+                    <input type="date" name="start_date" class="form-control" required>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Дата окончания</label>
+                    <input type="date" name="end_date" class="form-control" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success">Отправить запрос на согласование</button>
+        </form>
+    </div>
+</div>
+
         <!-- Правая колонка: Информация о сотруднике -->
         <div class="col-md-6 mb-4">
             <div class="card shadow-sm h-100">

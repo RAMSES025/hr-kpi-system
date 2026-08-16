@@ -201,3 +201,35 @@ def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
         
     # 3. Перезагружаем страницу личного кабинета
     return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
+
+@app.post("/web/request-absence/{user_id}", tags=["Web интерфейс"])
+def request_absence_web(
+    user_id: int, 
+    # Импортируем Form локально, чтобы Pylance не ругался на отсутствие импорта
+    start_date: str = fastapi.Form(...), 
+    end_date: str = fastapi.Form(...), 
+    reason: str = fastapi.Form(...), 
+    db: Session = Depends(get_db)
+):
+    import fastapi
+    from datetime import datetime
+    
+    # Превращаем строки из HTML-календаря в настоящие объекты дат Python
+    start = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    
+    # Создаем новую запись в базе данных
+    new_request = models.AbsenceRequest(
+        user_id=user_id,
+        start_date=start,
+        end_date=end,
+        reason=reason,
+        status="pending"  # Статус по умолчанию: "на рассмотрении"
+    )
+    
+    db.add(new_request)
+    db.commit()
+    
+    # После отправки возвращаем сотрудника обратно в его кабинет
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
