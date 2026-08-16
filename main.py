@@ -124,16 +124,21 @@ def read_dashboard(request: Request, user_id: int, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
     
     # Отдаем HTML-страницу, передавая в неё данные пользователя
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={"request": request, "user": user})
 
 # --- АДМИН-ПАНЕЛЬ (WEB-ИНТЕРФЕЙС) ---
 
-@app.get("/admin", response_class=HTMLResponse, tags=["Web интерфейс"])
-def read_admin_panel(request: Request, db: Session = Depends(get_db)):
-    # Получаем список всех сотрудников из базы данных
-    all_users = db.query(models.User).all()
-    # Отдаем страницу admin.html, передавая в неё список сотрудников
-    return templates.TemplateResponse("admin.html", {"request": request, "users": all_users})
+@app.get("/admin", tags=["Web интерфейс"])
+def admin_dashboard(request: Request, db: Session = Depends(get_db)):
+    # 1. Запрашиваем всех сотрудников из базы данных
+    users = db.query(models.User).all()
+    
+    # 2. Возвращаем шаблон и передаем в него полученный список users
+    return templates.TemplateResponse(
+        request=request, 
+        name="admin.html", 
+        context={"request": request, "users": users}
+    )
 
 @app.post("/admin/add-user", tags=["Web интерфейс"])
 def add_user_from_web(
@@ -206,9 +211,9 @@ def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
 def request_absence_web(
     user_id: int, 
     # Импортируем Form локально, чтобы Pylance не ругался на отсутствие импорта
-    start_date: str = fastapi.Form(...), 
-    end_date: str = fastapi.Form(...), 
-    reason: str = fastapi.Form(...), 
+    start_date: str = Form(...), 
+    end_date: str = Form(...), 
+    reason: str = Form(...), 
     db: Session = Depends(get_db)
 ):
     import fastapi
