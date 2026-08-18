@@ -99,5 +99,53 @@
     </div>
 </div>
 
+<!-- Карточка с ожидающими заявками -->
+<div class="card mt-4 shadow-sm">
+    <div class="card-header bg-warning text-dark">
+        <h5 class="card-title mb-0">Заявки на согласование</h5>
+    </div>
+    <div class="card-body">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>ID Сотрудника</th>
+                    <th>Тип отсутствия</th>
+                    <th>Дата начала</th>
+                    <th>Дата окончания</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Jinja2 цикл: перебираем все заявки из базы -->
+                {% for req in pending_requests %}
+                <tr>
+                    <td>Сотрудник #{{ req.user_id }}</td>
+                    <td>{{ req.reason }}</td>
+                    <td>{{ req.start_date }}</td>
+                    <td>{{ req.end_date }}</td>
+                    <td>
+                        <div class="d-flex gap-2">
+                            <!-- Кнопка Одобрить -->
+                            <form action="/web/approve-absence/{{ req.id }}" method="POST">
+                                <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
+                            </form>
+                            <!-- Кнопка Отклонить -->
+                            <form action="/web/reject-absence/{{ req.id }}" method="POST">
+                                <button type="submit" class="btn btn-danger btn-sm">Отклонить</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <!-- Если заявок нет -->
+                <tr>
+                    <td colspan="5" class="text-center text-muted py-3">Новых заявок нет. Все свободны!</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 </body>
 </html>

@@ -116,24 +116,43 @@ def clock_in(user_id: int, db: Session = Depends(get_db)):
 
 # --- WEB-ИНТЕРФЕЙС ---
 
-@app.get("/dashboard/{user_id}", response_class=HTMLResponse, tags=["Web интерфейс"])
-def read_dashboard(request: Request, user_id: int, db: Session = Depends(get_db)):
-    # Ищем сотрудника в базе
+@app.get("/dashboard/{user_id}", tags=["Web интерфейс"])
+def user_dashboard(user_id: int, request: Request, db: Session = Depends(get_db)):
+    # Находим самого сотрудника
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Сотрудник не найден")
     
-    # Отдаем HTML-страницу, передавая в неё данные пользователя
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
+    # Запрашиваем историю заявок ТОЛЬКО этого конкретного сотрудника
+    user_requests = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.user_id == user_id).all()
+    
+    return templates.TemplateResponse(
+        request=request, 
+        name="dashboard.html", 
+        context={
+            "request": request, 
+            "user": user, 
+            "user_requests": user_requests  # Передаем историю в шаблон
+        }
+    )
 
 # --- АДМИН-ПАНЕЛЬ (WEB-ИНТЕРФЕЙС) ---
 
-@app.get("/admin", response_class=HTMLResponse, tags=["Web интерфейс"])
-def read_admin_panel(request: Request, db: Session = Depends(get_db)):
-    # Получаем список всех сотрудников из базы данных
-    all_users = db.query(models.User).all()
-    # Отдаем страницу admin.html, передавая в неё список сотрудников
-    return templates.TemplateResponse("admin.html", {"request": request, "users": all_users})
+@app.get("/admin", tags=["Web интерфейс"])
+def admin_dashboard(request: Request, db: Session = Depends(get_db)):
+    # Запрашиваем всех сотрудников
+    users = db.query(models.User).all()
+    
+    # Запрашиваем только те заявки на отпуск, которые ожидают решения (PENDING)
+    pending_requests = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.status == "PENDING").all()
+    
+    return templates.TemplateResponse(
+        request=request, 
+        name="admin.html", 
+        context={
+            "request": request, 
+            "users": users, 
+            "pending_requests": pending_requests # Передаем заявки в HTML
+        }
+    )
 
 @app.post("/admin/add-user", tags=["Web интерфейс"])
 def add_user_from_web(
@@ -205,31 +224,57 @@ def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
 @app.post("/web/request-absence/{user_id}", tags=["Web интерфейс"])
 def request_absence_web(
     user_id: int, 
-    # Импортируем Form локально, чтобы Pylance не ругался на отсутствие импорта
-    start_date: str = fastapi.Form(...), 
-    end_date: str = fastapi.Form(...), 
-    reason: str = fastapi.Form(...), 
+    start_date: str = Form(...), 
+    end_date: str = Form(...), 
+    reason: str = Form(...), 
     db: Session = Depends(get_db)
 ):
-    import fastapi
     from datetime import datetime
+    from fastapi.responses import RedirectResponse
     
-    # Превращаем строки из HTML-календаря в настоящие объекты дат Python
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
     
-    # Создаем новую запись в базе данных
+    # Словарь-переводчик: переводим русский текст из формы в системный Enum базы данных
+    type_mapping = {
+        "Оплачиваемый отпуск": "VACATION",
+        "Больничный": "SICK_LEAVE",
+        "Отгул": "DAY_OFF"
+    }
+    
+    # Получаем правильный системный ключ (по умолчанию ставим VACATION, если что-то пойдет не так)
+    db_absence_type = type_mapping.get(reason, "VACATION")
+    
     new_request = models.AbsenceRequest(
         user_id=user_id,
+        absence_type=db_absence_type,  # <-- Передаем системный тип (например, VACATION)
         start_date=start,
         end_date=end,
-        reason=reason,
-        status="pending"  # Статус по умолчанию: "на рассмотрении"
+        reason=reason,                 # <-- А здесь оставляем русский текст для интерфейса
+        status="PENDING"
     )
     
     db.add(new_request)
     db.commit()
     
-    # После отправки возвращаем сотрудника обратно в его кабинет
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
+
+@app.post("/web/approve-absence/{request_id}", tags=["Web интерфейс"])
+def approve_absence(request_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import RedirectResponse
+    
+    # Прямое обновление записи в базе данных без создания конфликтов типов
+    db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({"status": "APPROVED"})
+    db.commit()
+    
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/web/reject-absence/{request_id}", tags=["Web интерфейс"])
+def reject_absence(request_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import RedirectResponse
+    
+    # Прямое обновление записи в базе данных
+    db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({"status": "REJECTED"})
+    db.commit()
+    
+    return RedirectResponse(url="/admin", status_code=303)
