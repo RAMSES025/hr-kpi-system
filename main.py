@@ -137,20 +137,32 @@ def user_dashboard(user_id: int, request: Request, db: Session = Depends(get_db)
 # --- АДМИН-ПАНЕЛЬ (WEB-ИНТЕРФЕЙС) ---
 
 @app.get("/admin", tags=["Web интерфейс"])
-def admin_dashboard(request: Request, db: Session = Depends(get_db)):
-    # Запрашиваем всех сотрудников
+def admin_dashboard(
+    request: Request,
+    error: str = None,
+    err_user: int = None,
+    err_needed: int = None,
+    err_available: int = None,
+    db: Session = Depends(get_db)
+):
     users = db.query(models.User).all()
-    
-    # Запрашиваем только те заявки на отпуск, которые ожидают решения (PENDING)
     pending_requests = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.status == "PENDING").all()
-    
+    history_requests = db.query(models.AbsenceRequest).filter(
+        models.AbsenceRequest.status != "PENDING"
+    ).order_by(models.AbsenceRequest.id.desc()).all()
+
     return templates.TemplateResponse(
-        request=request, 
-        name="admin.html", 
+        request=request,
+        name="admin.html",
         context={
-            "request": request, 
-            "users": users, 
-            "pending_requests": pending_requests # Передаем заявки в HTML
+            "request": request,
+            "users": users,
+            "pending_requests": pending_requests,
+            "history_requests": history_requests,
+            "error": error,
+            "err_user": err_user,
+            "err_needed": err_needed,
+            "err_available": err_available,
         }
     )
 
@@ -234,6 +246,8 @@ def request_absence_web(
     
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    if end < start:
+        start, end = end, start
     
     # Словарь-переводчик: переводим русский текст из формы в системный Enum базы данных
     type_mapping = {
@@ -262,19 +276,106 @@ def request_absence_web(
 @app.post("/web/approve-absence/{request_id}", tags=["Web интерфейс"])
 def approve_absence(request_id: int, db: Session = Depends(get_db)):
     from fastapi.responses import RedirectResponse
-    
-    # Прямое обновление записи в базе данных без создания конфликтов типов
+
+    req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
+    if not req:
+        return RedirectResponse(url="/admin", status_code=303)
+
+    # Если это оплачиваемый отпуск — сначала проверяем, хватает ли дней
+    if "VACATION" in str(req.absence_type):
+        days_count = (req.end_date - req.start_date).days + 1
+        user = db.query(models.User).filter(models.User.id == req.user_id).first()
+
+        if user and user.vacation_balance < days_count:
+            # Дней не хватает — НЕ одобряем, возвращаемся с флагом ошибки
+            return RedirectResponse(
+                url=f"/admin?error=insufficient_balance&err_user={req.user_id}&err_needed={days_count}&err_available={user.vacation_balance}",
+                status_code=303
+            )
+
+        # Дней хватает — списываем
+        db.query(models.User).filter(models.User.id == req.user_id).update(
+            {"vacation_balance": models.User.vacation_balance - days_count}
+        )
+
     db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({"status": "APPROVED"})
     db.commit()
-    
+
     return RedirectResponse(url="/admin", status_code=303)
+
 
 @app.post("/web/reject-absence/{request_id}", tags=["Web интерфейс"])
 def reject_absence(request_id: int, db: Session = Depends(get_db)):
     from fastapi.responses import RedirectResponse
+
+    req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
+    if req:
+        was_approved = "APPROVED" in str(req.status)
+
+        db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({"status": "REJECTED"})
+
+        # Если заявку до этого уже одобрили и это отпуск — возвращаем списанные дни
+        if was_approved and "VACATION" in str(req.absence_type):
+            days_count = (req.end_date - req.start_date).days + 1
+            db.query(models.User).filter(models.User.id == req.user_id).update(
+                {"vacation_balance": models.User.vacation_balance + days_count}
+            )
+        db.commit()
+
+    return RedirectResponse(url="/admin", status_code=303)
+
+@app.post("/web/delete-absence/{request_id}", tags=["Web интерфейс"])
+def delete_absence(request_id: int, db: Session = Depends(get_db)):
+    from fastapi.responses import RedirectResponse
+    req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
     
-    # Прямое обновление записи в базе данных
-    db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({"status": "REJECTED"})
-    db.commit()
+    if req:
+        user_id = req.user_id
+        # Бронебойная проверка статуса (учитывает и текст, и Enum базы данных)
+        if "PENDING" in str(req.status):
+            db.delete(req)
+            db.commit()
+        return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
+        
+    return RedirectResponse(url="/admin", status_code=303)
+
+
+@app.post("/web/edit-absence/{request_id}", tags=["Web интерфейс"])
+def edit_absence(
+    request_id: int, 
+    start_date: str = Form(...), 
+    end_date: str = Form(...), 
+    reason: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    from datetime import datetime
+    from fastapi.responses import RedirectResponse
     
+    req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
+    
+    if req and "PENDING" in str(req.status):
+        # Конвертируем данные
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        if end < start:
+            start, end = end, start
+        
+        type_mapping = {
+            "Оплачиваемый отпуск": "VACATION",
+            "Больничный": "SICK_LEAVE",
+            "Отгул": "DAY_OFF"
+        }
+        db_absence_type = type_mapping.get(reason, "VACATION")
+        
+        # Обновляем базу данных правильным методом, чтобы Pylance не выдавал ошибок
+        db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({
+            "start_date": start,
+            "end_date": end,
+            "reason": reason,
+            "absence_type": db_absence_type
+        })
+        db.commit()
+        
+        return RedirectResponse(url=f"/dashboard/{req.user_id}", status_code=303)
+        
     return RedirectResponse(url="/admin", status_code=303)
