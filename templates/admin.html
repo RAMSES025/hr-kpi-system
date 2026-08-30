@@ -11,7 +11,10 @@
 <nav class="navbar navbar-dark bg-dark mb-4">
     <div class="container">
         <a class="navbar-brand" href="#">🛡️ Панель администратора (HR)</a>
-        <a href="/dashboard/1" class="btn btn-outline-light btn-sm">В кабинет сотрудника</a>
+        <div class="d-flex gap-2">
+            <a href="/admin/calendar" class="btn btn-outline-light btn-sm">📅 Календарь отсутствий</a>
+            <a href="/dashboard/1" class="btn btn-outline-light btn-sm">В кабинет сотрудника</a>
+        </div>
     </div>
 </nav>
 
@@ -45,6 +48,12 @@
                             <input type="text" name="password" class="form-control" placeholder="Пароль для входа" required>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label text-muted small mb-1">Должность</label>
+                            <input type="text" name="position" class="form-control" placeholder="Например: специалист, старший консультант">
+                            <div class="form-text">Нужна, чтобы группировать сотрудников в календаре отсутствий. Можно оставить пустым.</div>
+                        </div>
+
                         <div class="row mb-3">
                             <div class="col">
                                 <label class="form-label text-muted small mb-1">Оклад (₽)</label>
@@ -74,6 +83,7 @@
                                 <tr>
                                     <th>ID</th>
                                     <th>ФИО</th>
+                                    <th>Должность</th>
                                     <th>Email</th>
                                     <th>Роль</th>
                                     <th>Зарплата (Оклад + Премия)</th>
@@ -85,13 +95,14 @@
                                 <tr>
                                     <td><strong>{{ user.id }}</strong></td>
                                     <td><a href="/dashboard/{{ user.id }}">{{ user.full_name }}</a></td>
+                                    <td>{{ user.position or "—" }}</td>
                                     <td>{{ user.email }}</td>
                                     <td><span class="badge bg-secondary">{{ user.role.value }}</span></td>
                                     <td>{{ user.base_salary }} ₽ <span class="text-success small">+{{ user.max_bonus }}</span></td>
                                 </tr>
                                 {% else %}
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">В базе пока нет сотрудников</td>
+                                    <td colspan="6" class="text-center text-muted py-4">В базе пока нет сотрудников</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

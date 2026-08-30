@@ -8,6 +8,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     role: RoleEnum = RoleEnum.EMPLOYEE
+    position: Optional[str] = None
     base_salary: float = 0.0
     max_bonus: float = 0.0
 
@@ -16,6 +17,7 @@ class UserResponse(BaseModel):
     full_name: str
     email: str
     role: RoleEnum
+    position: Optional[str]
     vacation_balance: int
 
     model_config = ConfigDict(from_attributes=True)

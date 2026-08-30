@@ -34,7 +34,12 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(Enum(RoleEnum), default=RoleEnum.EMPLOYEE)
-    
+
+    # Должность сотрудника (например: "специалист", "старший консультант").
+    # Используется, чтобы группировать сотрудников в календаре отсутствий,
+    # как на прототипе с рабочего стола. Необязательное поле.
+    position = Column(String, nullable=True, default=None)
+
     base_salary = Column(Float, default=0.0)    
     max_bonus = Column(Float, default=0.0)      
     vacation_balance = Column(Integer, default=28) 
