@@ -1,183 +1,174 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Календарь отсутствий - HR</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: #f5f6f8; }
+{% extends "base.html" %}
+{% block title %}Календарь отсутствий · Удалёнка{% endblock %}
+{% block active_nav %}calendar{% endblock %}
 
-        .gantt-toolbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .gantt-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: #555; }
-        .gantt-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
-        .dot-planned { background: #4a90e2; }
-        .dot-approved { background: #2fae60; }
-        .dot-other { background: #b9bec9; }
+{% block extra_style %}
+<style>
+    /* Стили специфичны для диаграммы Ганта — используют переменные из base.html */
+    .gantt-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .gantt-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); }
+    .gantt-legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .dot-planned { background: var(--brand); }
+    .dot-approved { background: var(--success); }
+    .dot-other { background: var(--text-faint); }
 
-        .gantt-scroll {
-            overflow: auto;
-            max-height: 76vh;
-            background: #fff;
-            border: 1px solid #e3e5e8;
-            border-radius: 10px;
-        }
+    .gantt-scroll {
+        overflow: auto;
+        max-height: 74vh;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-sm);
+    }
 
-        .gantt-grid {
-            position: relative;
-            display: grid;
-            grid-template-columns: 260px repeat({{ total_days }}, 34px);
-            grid-auto-rows: 44px;
-            width: max-content;
-            min-width: 100%;
-        }
+    .gantt-grid {
+        position: relative;
+        display: grid;
+        grid-template-columns: 260px repeat({{ total_days }}, 34px);
+        grid-auto-rows: 46px;
+        width: max-content;
+        min-width: 100%;
+    }
 
-        .gridlines {
-            position: absolute;
-            top: 0; left: 260px; right: 0; bottom: 0;
-            background-image: repeating-linear-gradient(to right, #eef0f2 0, #eef0f2 1px, transparent 1px, transparent 34px);
-            pointer-events: none;
-            z-index: 0;
-        }
+    .gridlines {
+        position: absolute;
+        top: 0; left: 260px; right: 0; bottom: 0;
+        background-image: repeating-linear-gradient(to right, var(--bg) 0, var(--bg) 1px, transparent 1px, transparent 34px);
+        pointer-events: none;
+        z-index: 0;
+    }
 
-        .today-line {
-            border-left: 2px solid #ff5b5b;
-            z-index: 1;
-            pointer-events: none;
-        }
+    .today-line {
+        border-left: 2px solid var(--danger);
+        z-index: 1;
+        pointer-events: none;
+    }
 
-        .corner, .month-cell, .day-cell {
-            position: sticky;
-            top: 0;
-            background: #fff;
-            z-index: 4;
-            border-bottom: 1px solid #eee;
-        }
-        .corner {
-            left: 0;
-            z-index: 6;
-            display: flex;
-            align-items: flex-end;
-            padding: 6px 12px 8px;
-            font-size: 12px;
-            color: #8a8f98;
-            border-right: 1px solid #eee;
-        }
-        .month-cell {
-            top: 0;
-            display: flex;
-            align-items: center;
-            padding-left: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #333;
-            border-left: 1px solid #eee;
-        }
-        .day-cell {
-            top: 44px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            color: #555;
-            line-height: 1.3;
-        }
-        .day-cell.weekend { color: #c3c7cd; }
-        .day-cell.today .day-num { color: #ff5b5b; font-weight: 700; }
+    .corner, .month-cell, .day-cell {
+        position: sticky;
+        top: 0;
+        background: var(--surface);
+        z-index: 4;
+        border-bottom: 1px solid var(--border);
+    }
+    .corner {
+        left: 0;
+        z-index: 6;
+        display: flex;
+        align-items: flex-end;
+        padding: 6px 12px 8px;
+        font-size: 11.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text-faint);
+        border-right: 1px solid var(--border);
+    }
+    .month-cell {
+        top: 0;
+        display: flex;
+        align-items: center;
+        padding-left: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text);
+        border-left: 1px solid var(--border);
+    }
+    .day-cell {
+        top: 46px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        color: var(--text-muted);
+        line-height: 1.3;
+    }
+    .day-cell.weekend { color: var(--text-faint); background: #fafbfd; }
+    .day-cell.today .day-num { color: var(--danger); font-weight: 700; }
 
-        .group-row {
-            grid-column: 1 / -1;
-            background: #fafbfc;
-            border-top: 1px solid #eee;
-            border-bottom: 1px solid #eee;
-            z-index: 2;
-        }
-        .group-label {
-            position: sticky;
-            left: 0;
-            width: max-content;
-            padding: 10px 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: .04em;
-            color: #9aa0a8;
-        }
+    .group-row {
+        grid-column: 1 / -1;
+        background: #fafbfc;
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+        z-index: 2;
+    }
+    .group-label {
+        position: sticky;
+        left: 0;
+        width: max-content;
+        padding: 10px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: var(--text-faint);
+    }
 
-        .emp-cell {
-            grid-column: 1 / 2;
-            position: sticky;
-            left: 0;
-            z-index: 3;
-            background: #fff;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 0 12px;
-            border-right: 1px solid #eee;
-            border-bottom: 1px solid #f2f2f2;
-        }
-        .avatar {
-            width: 30px; height: 30px; border-radius: 50%;
-            background: #e9ecf1; color: #6b7280;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 600; flex-shrink: 0;
-        }
-        .emp-name { font-size: 13px; color: #222; line-height: 1.2; }
-        .emp-id { font-size: 11px; color: #9aa0a8; }
-        .emp-away-badge {
-            font-size: 10px; color: #2fae60; background: #e7f7ee;
-            border-radius: 8px; padding: 1px 6px; margin-left: 4px;
-        }
+    .emp-cell {
+        grid-column: 1 / 2;
+        position: sticky;
+        left: 0;
+        z-index: 3;
+        background: var(--surface);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+        border-right: 1px solid var(--border);
+        border-bottom: 1px solid var(--bg);
+    }
+    .emp-name { font-size: 13px; color: var(--text); line-height: 1.2; font-weight: 500; }
+    .emp-id { font-size: 11px; color: var(--text-faint); }
 
-        .bar {
-            align-self: center;
-            margin: 6px 2px;
-            min-height: 28px;
-            border-radius: 6px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            padding: 2px 8px;
-            font-size: 11px;
-            line-height: 1.25;
-            color: #fff;
-            overflow: hidden;
-            white-space: nowrap;
-            z-index: 2;
-            box-shadow: 0 1px 2px rgba(0,0,0,.08);
-        }
-        .bar-planned { background: #4a90e2; }
-        .bar-approved { background: #2fae60; }
-        .bar-other { background: #b9bec9; color: #454b55; }
-        .bar .bar-range { opacity: .9; }
+    .bar {
+        align-self: center;
+        margin: 6px 2px;
+        min-height: 30px;
+        border-radius: 7px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 2px 8px;
+        font-size: 11px;
+        line-height: 1.25;
+        color: #fff;
+        overflow: hidden;
+        white-space: nowrap;
+        z-index: 2;
+        box-shadow: 0 1px 2px rgba(0,0,0,.1);
+    }
+    .bar-planned { background: var(--brand); }
+    .bar-approved { background: var(--success); }
+    .bar-other { background: #cdd2da; color: #4a5262; }
+    .bar .bar-range { opacity: .85; }
 
-        .no-employees {
-            grid-column: 1 / -1;
-            padding: 40px;
-            text-align: center;
-            color: #9aa0a8;
-        }
-    </style>
-</head>
-<body>
+    .no-employees {
+        grid-column: 1 / -1;
+        padding: 40px;
+        text-align: center;
+        color: var(--text-faint);
+    }
+</style>
+{% endblock %}
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container-fluid px-4">
-        <a class="navbar-brand" href="#">📅 Календарь отсутствий</a>
-        <a href="/admin" class="btn btn-outline-light btn-sm">&larr; В админ-панель</a>
+{% block content %}
+<div class="page-wrap">
+
+    <div class="page-header">
+        <div>
+            <h1>Календарь отсутствий</h1>
+            <p class="lead">Кто и когда в отпуске, на больничном или в отгуле — общий вид для планирования.</p>
+        </div>
     </div>
-</nav>
-
-<div class="container-fluid px-4">
 
     <div class="gantt-toolbar">
         <div>
@@ -187,8 +178,8 @@
             </div>
         </div>
 
-        <div class="d-flex align-items-center gap-2">
-            <div class="gantt-legend me-3">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="gantt-legend me-2">
                 <span><span class="dot dot-planned"></span>планируемый отпуск</span>
                 <span><span class="dot dot-approved"></span>отпуск согласован</span>
                 <span><span class="dot dot-other"></span>больничный / отгул</span>
@@ -229,7 +220,7 @@
             </div>
             {% for emp in group.employees %}
             <div class="emp-cell" style="grid-row: {{ emp.row }};">
-                <div class="avatar">{{ emp.user.full_name[0] }}</div>
+                <div class="avatar-sm">{{ emp.user.full_name[0] }}</div>
                 <div>
                     <div class="emp-name">{{ emp.user.full_name }}</div>
                     <div class="emp-id">ID {{ emp.user.id }}</div>
@@ -255,6 +246,4 @@
     </div>
 
 </div>
-
-</body>
-</html>
+{% endblock %}

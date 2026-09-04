@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import List, Optional, cast
 
 from datetime import datetime, date, timedelta
 import calendar as calendar_module
+import os
+import secrets
+import bcrypt
 
 import models
 import schemas
@@ -32,8 +36,70 @@ def ensure_column(table: str, column: str, coltype: str):
 ensure_column("users", "position", "VARCHAR")
 
 
+# --- ВХОД ПО ПАРОЛЮ: СЕКРЕТНЫЙ КЛЮЧ СЕССИЙ ---
+
+def load_or_create_session_secret() -> str:
+    """
+    Секретный ключ, которым подписываются cookie сессии входа (чтобы никто
+    не мог подделать "я такой-то пользователь", изменив cookie в браузере).
+    Хранится в отдельном файле session_secret.key рядом с базой данных.
+    Этот файл НЕ должен попадать в git (уже добавлен в .gitignore) —
+    так у каждой установки приложения (у каждого, кто её у себя запустит)
+    будет свой уникальный ключ, без ручной настройки.
+    """
+    secret_path = "session_secret.key"
+    if os.path.exists(secret_path):
+        with open(secret_path, "r", encoding="utf-8") as f:
+            existing = f.read().strip()
+            if existing:
+                return existing
+    new_secret = secrets.token_hex(32)
+    with open(secret_path, "w", encoding="utf-8") as f:
+        f.write(new_secret)
+    return new_secret
+
+
 app = FastAPI(title="Corporate HR & KPI System")
+
+# Подключаем поддержку "запомнить, кто вошёл" через подписанную cookie.
+# same_site="lax" — браузер не будет посылать эту cookie при переходе с
+# чужих сайтов, это базовая защита от подделки запросов (CSRF).
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=load_or_create_session_secret(),
+    same_site="lax",
+    max_age=60 * 60 * 24 * 14,  # сессия остаётся активной 14 дней
+)
+
 templates = Jinja2Templates(directory="templates")
+
+
+def ensure_admin_bootstrap():
+    """
+    Если в базе нет НИ ОДНОГО сотрудника с ролью выше "employee" — после
+    включения входа по паролю зайти в админ-панель будет некому. Чтобы
+    систему нельзя было случайно "запереть", автоматически делаем самого
+    первого зарегистрированного сотрудника администратором. Дальше он сам
+    сможет назначать роли (когда появится такая форма) или это можно
+    поменять вручную в базе.
+    """
+    db = SessionLocal()
+    try:
+        has_admin = db.query(models.User).filter(
+            models.User.role != models.RoleEnum.EMPLOYEE
+        ).first()
+        if not has_admin:
+            first_user = db.query(models.User).order_by(models.User.id).first()
+            if first_user:
+                db.query(models.User).filter(models.User.id == first_user.id).update(
+                    {"role": models.RoleEnum.ADMIN}
+                )
+                db.commit()
+    finally:
+        db.close()
+
+
+ensure_admin_bootstrap()
 
 
 def get_db():
@@ -43,40 +109,198 @@ def get_db():
     finally:
         db.close()
 
+
+# --- ПАРОЛИ: ХЭШИРОВАНИЕ И ПРОВЕРКА ---
+
+def hash_password(plain_password: str) -> str:
+    """Превращает пароль в хэш bcrypt — необратимую 'кашу', которую нельзя прочитать обратно,
+    даже если кто-то получит доступ к файлу базы данных."""
+    return bcrypt.hashpw(plain_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain_password: str, stored_value: str) -> bool:
+    """
+    Сравнивает введённый пароль с тем, что хранится в базе.
+    Понимает оба формата:
+      - новый bcrypt-хэш (начинается с $2a$/$2b$/$2y$),
+      - старый пароль в открытом виде (остался от версии системы ДО
+        внедрения хэширования, до 03.09.2026) — сравниваем напрямую,
+        чтобы никто из существующих сотрудников не потерял доступ.
+    """
+    if stored_value.startswith(("$2a$", "$2b$", "$2y$")):
+        try:
+            return bcrypt.checkpw(plain_password.encode("utf-8"), stored_value.encode("utf-8"))
+        except ValueError:
+            return False
+    return secrets.compare_digest(plain_password, stored_value)
+
+
+# --- ТЕКУЩИЙ ПОЛЬЗОВАТЕЛЬ И ПРОВЕРКИ ДОСТУПА ---
+
+def get_current_user(request: Request, db: Session) -> Optional[models.User]:
+    """Кто сейчас вошёл в систему (по cookie-сессии). None, если никто не вошёл."""
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return None
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+
+def is_admin_role(user: Optional[models.User]) -> bool:
+    """HR, руководитель или администратор — то есть кто угодно, кроме обычного сотрудника.
+    Именно эта проверка открывает доступ к админ-панели и управлению заявками."""
+    return bool(user) and user.role != models.RoleEnum.EMPLOYEE
+
+
+def forbidden_page(request: Request, current_user: Optional[models.User], message: Optional[str] = None):
+    """Единая страница "доступ запрещён" вместо падения сайта с ошибкой."""
+    return templates.TemplateResponse(
+        request=request,
+        name="forbidden.html",
+        context={
+            "request": request,
+            "current_user": current_user,
+            "message": message or "У вас нет доступа к этой странице.",
+        },
+        status_code=403,
+    )
+
+
 @app.get("/")
-def read_root():
-    return {"message": "Бэкенд HR-системы работает!"}
+def read_root(request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if is_admin_role(current_user):
+        return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{current_user.id}", status_code=303)
+
+
+# --- ВХОД / ВЫХОД ---
+
+@app.get("/login", tags=["Вход"])
+def login_page(request: Request, error: Optional[str] = None, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if current_user:
+        if is_admin_role(current_user):
+            return RedirectResponse(url="/admin", status_code=303)
+        return RedirectResponse(url=f"/dashboard/{current_user.id}", status_code=303)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={"request": request, "error": error},
+    )
+
+
+@app.post("/login", tags=["Вход"])
+def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(models.User.email == email).first()
+
+    # Специально не уточняем, что именно неверно — email или пароль,
+    # одним и тем же сообщением для обоих случаев. Иначе по ответу сайта
+    # можно было бы угадывать, какие email вообще зарегистрированы в системе.
+    if not user or not verify_password(password, str(user.hashed_password)):
+        return RedirectResponse(url="/login?error=invalid", status_code=303)
+
+    # Если пароль всё ещё хранится в открытом виде (со старой версии системы,
+    # до 03.09.2026) — при первом же успешном входе тихо переводим его на
+    # безопасный хэш. Сотруднику ничего для этого делать не нужно.
+    if not str(user.hashed_password).startswith(("$2a$", "$2b$", "$2y$")):
+        db.query(models.User).filter(models.User.id == user.id).update(
+            {"hashed_password": hash_password(password)}
+        )
+        db.commit()
+
+    request.session["user_id"] = user.id
+
+    if is_admin_role(user):
+        return RedirectResponse(url="/admin", status_code=303)
+    return RedirectResponse(url=f"/dashboard/{user.id}", status_code=303)
+
+
+@app.post("/logout", tags=["Вход"])
+def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.post("/web/change-password/{user_id}", tags=["Вход"])
+def change_password(
+    user_id: int,
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    new_password_repeat: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if current_user.id != user_id:
+        return forbidden_page(request, current_user, "Менять можно только собственный пароль.")
+
+    if not verify_password(current_password, str(current_user.hashed_password)):
+        return RedirectResponse(url=f"/dashboard/{user_id}?pwd_error=wrong_current", status_code=303)
+
+    if len(new_password) < 6:
+        return RedirectResponse(url=f"/dashboard/{user_id}?pwd_error=too_short", status_code=303)
+
+    if new_password != new_password_repeat:
+        return RedirectResponse(url=f"/dashboard/{user_id}?pwd_error=mismatch", status_code=303)
+
+    db.query(models.User).filter(models.User.id == user_id).update(
+        {"hashed_password": hash_password(new_password)}
+    )
+    db.commit()
+
+    return RedirectResponse(url=f"/dashboard/{user_id}?pwd_success=1", status_code=303)
 
 
 @app.post("/users/", response_model=schemas.UserResponse, tags=["Сотрудники"])
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(user: schemas.UserCreate, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not is_admin_role(current_user):
+        raise HTTPException(status_code=403, detail="Требуются права администратора")
+
     db_user = db.query(models.User).filter(models.User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Сотрудник с таким email уже существует")
-    
+
     new_user = models.User(
         full_name=user.full_name,
         email=user.email,
-        hashed_password=user.password,
+        hashed_password=hash_password(user.password),
         role=user.role,
         position=user.position,
         base_salary=user.base_salary,
         max_bonus=user.max_bonus
     )
-    
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     return new_user
 
 @app.get("/users/", response_model=List[schemas.UserResponse], tags=["Сотрудники"])
-def get_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_users(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not is_admin_role(current_user):
+        raise HTTPException(status_code=403, detail="Требуются права администратора")
     # Получаем список всех сотрудников
     users = db.query(models.User).offset(skip).limit(limit).all()
     return users
 
 @app.post("/users/{user_id}/absences/", response_model=schemas.AbsenceResponse, tags=["Отсутствия"])
-def create_absence_request(user_id: int, absence: schemas.AbsenceCreate, db: Session = Depends(get_db)):
+def create_absence_request(user_id: int, absence: schemas.AbsenceCreate, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user or (current_user.id != user_id and not is_admin_role(current_user)):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="Сотрудник не найден")
@@ -96,7 +320,11 @@ def create_absence_request(user_id: int, absence: schemas.AbsenceCreate, db: Ses
 ## --- ЭНДПОИНТЫ ДЛЯ УЧЕТА ВРЕМЕНИ ---
 
 @app.post("/users/{user_id}/clock-in/", response_model=schemas.TimeLogResponse, tags=["Учет времени"])
-def clock_in(user_id: int, db: Session = Depends(get_db)):
+def clock_in(user_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user or current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Отмечать рабочее время можно только за себя")
+
     # 1. Проверяем, существует ли сотрудник
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
@@ -104,7 +332,7 @@ def clock_in(user_id: int, db: Session = Depends(get_db)):
 
     today = date.today()
     now = datetime.now()
-    
+
     # 2. Проверяем, не отмечался ли он уже сегодня
     existing_log = db.query(models.TimeLog).filter(
         models.TimeLog.user_id == user_id,
@@ -117,7 +345,7 @@ def clock_in(user_id: int, db: Session = Depends(get_db)):
     # 3. Считаем опоздание. Допустим, рабочий день начинается строго в 09:00.
     expected_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
     late_minutes = 0
-    
+
     if now > expected_start:
         late_minutes = int((now - expected_start).total_seconds() / 60)
 
@@ -128,30 +356,45 @@ def clock_in(user_id: int, db: Session = Depends(get_db)):
         clock_in=now,
         is_late=late_minutes
     )
-    
+
     db.add(new_log)
     db.commit()
     db.refresh(new_log)
-    
+
     return new_log
 
 # --- WEB-ИНТЕРФЕЙС ---
 
 @app.get("/dashboard/{user_id}", tags=["Web интерфейс"])
-def user_dashboard(user_id: int, request: Request, db: Session = Depends(get_db)):
+def user_dashboard(
+    user_id: int,
+    request: Request,
+    pwd_error: Optional[str] = None,
+    pwd_success: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if current_user.id != user_id and not is_admin_role(current_user):
+        return forbidden_page(request, current_user, "Это личный кабинет другого сотрудника.")
+
     # Находим самого сотрудника
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    
+
     # Запрашиваем историю заявок ТОЛЬКО этого конкретного сотрудника
     user_requests = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.user_id == user_id).all()
-    
+
     return templates.TemplateResponse(
-        request=request, 
-        name="dashboard.html", 
+        request=request,
+        name="dashboard.html",
         context={
-            "request": request, 
-            "user": user, 
-            "user_requests": user_requests  # Передаем историю в шаблон
+            "request": request,
+            "user": user,
+            "user_requests": user_requests,  # Передаем историю в шаблон
+            "current_user": current_user,
+            "pwd_error": pwd_error,
+            "pwd_success": pwd_success,
         }
     )
 
@@ -166,6 +409,12 @@ def admin_dashboard(
     err_available: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not is_admin_role(current_user):
+        return forbidden_page(request, current_user, "Админ-панель доступна только HR, руководителям и администраторам.")
+
     users = db.query(models.User).all()
     pending_requests = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.status == "PENDING").all()
     history_requests = db.query(models.AbsenceRequest).filter(
@@ -184,11 +433,13 @@ def admin_dashboard(
             "err_user": err_user,
             "err_needed": err_needed,
             "err_available": err_available,
+            "current_user": current_user,
         }
     )
 
 @app.post("/admin/add-user", tags=["Web интерфейс"])
 def add_user_from_web(
+    request: Request,
     # В отличие от JSON (Pydantic), данные из HTML-формы нужно принимать через Form(...)
     full_name: str = Form(...),
     email: str = Form(...),
@@ -198,36 +449,46 @@ def add_user_from_web(
     max_bonus: float = Form(0.0),
     db: Session = Depends(get_db)
 ):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not is_admin_role(current_user):
+        return forbidden_page(request, current_user, "Добавлять сотрудников может только HR, руководитель или администратор.")
+
     # Проверяем, свободен ли email
     db_user = db.query(models.User).filter(models.User.email == email).first()
     if db_user:
         # В идеале тут нужно возвращать страницу с ошибкой, но пока упростим
         raise HTTPException(status_code=400, detail="Сотрудник с таким email уже существует")
-    
+
     # Создаем нового пользователя
     new_user = models.User(
         full_name=full_name,
         email=email,
-        hashed_password=password,
+        hashed_password=hash_password(password),
         role=models.RoleEnum.EMPLOYEE, # По умолчанию делаем обычным сотрудником
         position=(position.strip() if position and position.strip() else None),
         base_salary=base_salary,
         max_bonus=max_bonus
     )
-    
+
     db.add(new_user)
     db.commit()
-    
+
     # После успешного добавления, перенаправляем пользователя обратно на страницу админки
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/web/clock-in/{user_id}", tags=["Web интерфейс"])
-def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
-    from datetime import date, datetime
-    
+def clock_in_from_web(user_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if current_user.id != user_id:
+        return forbidden_page(request, current_user, "Отмечать рабочее время можно только за себя.")
+
     today = date.today()
     now = datetime.now()
-    
+
     # 1. Проверяем, не нажимал ли сотрудник кнопку сегодня
     existing_log = db.query(models.TimeLog).filter(
         models.TimeLog.user_id == user_id,
@@ -239,7 +500,7 @@ def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
         # Считаем опоздание (допустим, рабочий день начинается строго в 09:00)
         expected_start = now.replace(hour=9, minute=0, second=0, microsecond=0)
         late_minutes = 0
-        
+
         if now > expected_start:
             late_minutes = int((now - expected_start).total_seconds() / 60)
 
@@ -252,36 +513,40 @@ def clock_in_from_web(user_id: int, db: Session = Depends(get_db)):
         )
         db.add(new_log)
         db.commit()
-        
+
     # 3. Перезагружаем страницу личного кабинета
     return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
 
 @app.post("/web/request-absence/{user_id}", tags=["Web интерфейс"])
 def request_absence_web(
-    user_id: int, 
-    start_date: str = Form(...), 
-    end_date: str = Form(...), 
-    reason: str = Form(...), 
+    user_id: int,
+    request: Request,
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    reason: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    from datetime import datetime
-    from fastapi.responses import RedirectResponse
-    
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if current_user.id != user_id and not is_admin_role(current_user):
+        return forbidden_page(request, current_user)
+
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
     if end < start:
         start, end = end, start
-    
+
     # Словарь-переводчик: переводим русский текст из формы в системный Enum базы данных
     type_mapping = {
         "Оплачиваемый отпуск": "VACATION",
         "Больничный": "SICK_LEAVE",
         "Отгул": "DAY_OFF"
     }
-    
+
     # Получаем правильный системный ключ (по умолчанию ставим VACATION, если что-то пойдет не так)
     db_absence_type = type_mapping.get(reason, "VACATION")
-    
+
     new_request = models.AbsenceRequest(
         user_id=user_id,
         absence_type=db_absence_type,  # <-- Передаем системный тип (например, VACATION)
@@ -290,15 +555,19 @@ def request_absence_web(
         reason=reason,                 # <-- А здесь оставляем русский текст для интерфейса
         status="PENDING"
     )
-    
+
     db.add(new_request)
     db.commit()
-    
+
     return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
 
 @app.post("/web/approve-absence/{request_id}", tags=["Web интерфейс"])
-def approve_absence(request_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import RedirectResponse
+def approve_absence(request_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not is_admin_role(current_user):
+        return forbidden_page(request, current_user, "Согласовывать заявки может только HR, руководитель или администратор.")
 
     req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
     if not req:
@@ -328,8 +597,12 @@ def approve_absence(request_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/web/reject-absence/{request_id}", tags=["Web интерфейс"])
-def reject_absence(request_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import RedirectResponse
+def reject_absence(request_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    if not is_admin_role(current_user):
+        return forbidden_page(request, current_user, "Отклонять заявки может только HR, руководитель или администратор.")
 
     req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
     if req:
@@ -348,48 +621,58 @@ def reject_absence(request_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/admin", status_code=303)
 
 @app.post("/web/delete-absence/{request_id}", tags=["Web интерфейс"])
-def delete_absence(request_id: int, db: Session = Depends(get_db)):
-    from fastapi.responses import RedirectResponse
+def delete_absence(request_id: int, request: Request, db: Session = Depends(get_db)):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+
     req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
-    
+
     if req:
         user_id = req.user_id
+        if req.user_id != current_user.id and not is_admin_role(current_user):
+            return forbidden_page(request, current_user)
         # Бронебойная проверка статуса (учитывает и текст, и Enum базы данных)
         if "PENDING" in str(req.status):
             db.delete(req)
             db.commit()
         return RedirectResponse(url=f"/dashboard/{user_id}", status_code=303)
-        
+
     return RedirectResponse(url="/admin", status_code=303)
 
 
 @app.post("/web/edit-absence/{request_id}", tags=["Web интерфейс"])
 def edit_absence(
-    request_id: int, 
-    start_date: str = Form(...), 
-    end_date: str = Form(...), 
-    reason: str = Form(...), 
+    request_id: int,
+    request: Request,
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    reason: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    from datetime import datetime
-    from fastapi.responses import RedirectResponse
-    
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+
     req = db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).first()
-    
+
+    if req and req.user_id != current_user.id and not is_admin_role(current_user):
+        return forbidden_page(request, current_user)
+
     if req and "PENDING" in str(req.status):
         # Конвертируем данные
         start = datetime.strptime(start_date, "%Y-%m-%d").date()
         end = datetime.strptime(end_date, "%Y-%m-%d").date()
         if end < start:
             start, end = end, start
-        
+
         type_mapping = {
             "Оплачиваемый отпуск": "VACATION",
             "Больничный": "SICK_LEAVE",
             "Отгул": "DAY_OFF"
         }
         db_absence_type = type_mapping.get(reason, "VACATION")
-        
+
         # Обновляем базу данных правильным методом, чтобы Pylance не выдавал ошибок
         db.query(models.AbsenceRequest).filter(models.AbsenceRequest.id == request_id).update({
             "start_date": start,
@@ -398,9 +681,9 @@ def edit_absence(
             "absence_type": db_absence_type
         })
         db.commit()
-        
+
         return RedirectResponse(url=f"/dashboard/{req.user_id}", status_code=303)
-        
+
     return RedirectResponse(url="/admin", status_code=303)
 
 
@@ -444,6 +727,12 @@ def absence_calendar(
     months: int = 2,
     db: Session = Depends(get_db),
 ):
+    current_user = get_current_user(request, db)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=303)
+    # Календарь отсутствий общий для всех сотрудников (чтобы удобно было
+    # планировать) — здесь намеренно нет проверки на роль администратора.
+
     today = date.today()
 
     # Какой месяц показывать первым. По умолчанию - текущий.
@@ -592,5 +881,6 @@ def absence_calendar(
                 month_headers[0]["label"] if len(month_headers) == 1
                 else f"{month_headers[0]['label']} - {month_headers[-1]['label']}"
             ),
+            "current_user": current_user,
         }
     )

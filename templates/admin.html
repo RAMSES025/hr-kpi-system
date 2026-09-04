@@ -1,108 +1,132 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Админ-панель HR</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
+{% extends "base.html" %}
+{% block title %}Админ-панель · Удалёнка{% endblock %}
+{% block active_nav %}admin{% endblock %}
 
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container">
-        <a class="navbar-brand" href="#">🛡️ Панель администратора (HR)</a>
-        <div class="d-flex gap-2">
-            <a href="/admin/calendar" class="btn btn-outline-light btn-sm">📅 Календарь отсутствий</a>
-            <a href="/dashboard/1" class="btn btn-outline-light btn-sm">В кабинет сотрудника</a>
+{% block content %}
+<div class="page-wrap">
+
+    <div class="page-header">
+        <div>
+            <h1>Панель администратора</h1>
+            <p class="lead">Сотрудники, заявки на отсутствие и решения по ним — всё в одном месте.</p>
+        </div>
+        <div class="actions">
+            <a href="/admin/calendar" class="btn btn-primary">📅 Открыть календарь отсутствий</a>
         </div>
     </div>
-</nav>
 
-<div class="container">
     {% if error == "insufficient_balance" %}
-<div class="alert alert-danger">
-    ⚠️ Нельзя одобрить: у сотрудника #{{ err_user }} осталось {{ err_available }} дней отпуска, а нужно {{ err_needed }}.
-</div>
-{% endif %}
-    <div class="row">
-        <!-- Левая колонка: Форма добавления сотрудника -->
-        <div class="col-md-4 mb-4">
-            <div class="card shadow-sm h-100">
+    <div class="alert alert-danger mb-3">
+        ⚠️ Нельзя одобрить заявку: у сотрудника #{{ err_user }} осталось {{ err_available }} дней отпуска, а нужно {{ err_needed }}.
+    </div>
+    {% endif %}
+
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="icon brand">👥</div>
+            <div>
+                <div class="value">{{ users|length }}</div>
+                <div class="label">сотрудников в штате</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon warning">⏳</div>
+            <div>
+                <div class="value">{{ pending_requests|length }}</div>
+                <div class="label">заявок на согласовании</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon neutral">🗂</div>
+            <div>
+                <div class="value">{{ history_requests|length }}</div>
+                <div class="label">решений в истории</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- Добавление сотрудника -->
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-header accent-info">
+                    <span class="card-title">➕ Добавить сотрудника</span>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title border-bottom pb-2 mb-3">Добавить сотрудника</h5>
-                    
-                    <!-- Форма отправляет POST-запрос на адрес /admin/add-user -->
                     <form action="/admin/add-user" method="post">
                         <div class="mb-3">
-                            <label class="form-label text-muted small mb-1">ФИО</label>
-                            <input type="text" name="full_name" class="form-control" placeholder="Например: Петр Петров" required>
+                            <label class="form-label">ФИО</label>
+                            <input type="text" name="full_name" class="form-control" placeholder="Например: Пётр Петров" required>
                         </div>
-                        
                         <div class="mb-3">
-                            <label class="form-label text-muted small mb-1">Email</label>
+                            <label class="form-label">Email</label>
                             <input type="email" name="email" class="form-control" placeholder="petr@example.com" required>
                         </div>
-
                         <div class="mb-3">
-                            <label class="form-label text-muted small mb-1">Временный пароль</label>
+                            <label class="form-label">Временный пароль</label>
                             <input type="text" name="password" class="form-control" placeholder="Пароль для входа" required>
                         </div>
-
                         <div class="mb-3">
-                            <label class="form-label text-muted small mb-1">Должность</label>
+                            <label class="form-label">Должность</label>
                             <input type="text" name="position" class="form-control" placeholder="Например: специалист, старший консультант">
-                            <div class="form-text">Нужна, чтобы группировать сотрудников в календаре отсутствий. Можно оставить пустым.</div>
+                            <div class="form-text text-muted">Нужна, чтобы группировать сотрудников в календаре отсутствий. Можно оставить пустым.</div>
                         </div>
-
-                        <div class="row mb-3">
+                        <div class="row g-2 mb-3">
                             <div class="col">
-                                <label class="form-label text-muted small mb-1">Оклад (₽)</label>
+                                <label class="form-label">Оклад (₽)</label>
                                 <input type="number" name="base_salary" class="form-control" value="0" required>
                             </div>
                             <div class="col">
-                                <label class="form-label text-muted small mb-1">Макс. премия (₽)</label>
+                                <label class="form-label">Макс. премия (₽)</label>
                                 <input type="number" name="max_bonus" class="form-control" value="0" required>
                             </div>
                         </div>
-
-                        <button type="submit" class="btn btn-success w-100">➕ Зарегистрировать</button>
+                        <button type="submit" class="btn btn-success w-100">Зарегистрировать</button>
                     </form>
                 </div>
             </div>
         </div>
 
-        <!-- Правая колонка: Список всех сотрудников -->
-        <div class="col-md-8 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-body">
-                    <h5 class="card-title border-bottom pb-2 mb-3">Штат компании</h5>
-                    
+        <!-- Штат компании -->
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-header accent-neutral">
+                    <span class="card-title">🏢 Штат компании</span>
+                </div>
+                <div class="card-body p-0">
                     <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="table-light">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>ФИО</th>
+                                    <th>Сотрудник</th>
                                     <th>Должность</th>
                                     <th>Email</th>
                                     <th>Роль</th>
-                                    <th>Зарплата (Оклад + Премия)</th>
+                                    <th>Отпуск</th>
+                                    <th>Зарплата</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <!-- Здесь Jinja2 будет перебирать сотрудников из базы -->
                                 {% for user in users %}
                                 <tr>
-                                    <td><strong>{{ user.id }}</strong></td>
-                                    <td><a href="/dashboard/{{ user.id }}">{{ user.full_name }}</a></td>
+                                    <td>
+                                        <a href="/dashboard/{{ user.id }}" class="d-flex align-items-center gap-2 text-decoration-none">
+                                            <span class="avatar-sm">{{ user.full_name[0] }}</span>
+                                            <span>
+                                                <div class="fw-semibold text-dark">{{ user.full_name }}</div>
+                                                <div class="text-muted" style="font-size:12px;">ID {{ user.id }}</div>
+                                            </span>
+                                        </a>
+                                    </td>
                                     <td>{{ user.position or "—" }}</td>
-                                    <td>{{ user.email }}</td>
+                                    <td class="text-muted">{{ user.email }}</td>
                                     <td><span class="badge bg-secondary">{{ user.role.value }}</span></td>
-                                    <td>{{ user.base_salary }} ₽ <span class="text-success small">+{{ user.max_bonus }}</span></td>
+                                    <td>{{ user.vacation_balance }} дн.</td>
+                                    <td>{{ "%.0f"|format(user.base_salary) }} ₽ <span class="text-success" style="font-size:12px;">+{{ "%.0f"|format(user.max_bonus) }}</span></td>
                                 </tr>
                                 {% else %}
                                 <tr>
-                                    <td colspan="6" class="text-center text-muted py-4">В базе пока нет сотрудников</td>
+                                    <td colspan="6" class="empty-state">В базе пока нет сотрудников</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -111,99 +135,96 @@
                 </div>
             </div>
         </div>
-        
     </div>
-</div>
 
-<!-- Карточка с ожидающими заявками -->
-<div class="card mt-4 shadow-sm">
-    <div class="card-header bg-warning text-dark">
-        <h5 class="card-title mb-0">Заявки на согласование</h5>
+    <!-- Заявки на согласование -->
+    <div class="card mt-3">
+        <div class="card-header accent-warning">
+            <span class="card-title">⏳ Заявки на согласование</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Сотрудник</th>
+                            <th>Тип отсутствия</th>
+                            <th>Начало</th>
+                            <th>Окончание</th>
+                            <th class="text-end">Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in pending_requests %}
+                        <tr>
+                            <td>Сотрудник #{{ req.user_id }}</td>
+                            <td>{{ req.reason }}</td>
+                            <td>{{ req.start_date }}</td>
+                            <td>{{ req.end_date }}</td>
+                            <td class="text-end">
+                                <div class="d-flex gap-2 justify-content-end">
+                                    <form action="/web/approve-absence/{{ req.id }}" method="POST" class="m-0">
+                                        <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
+                                    </form>
+                                    <form action="/web/reject-absence/{{ req.id }}" method="POST" class="m-0">
+                                        <button type="submit" class="btn btn-danger btn-sm">Отклонить</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="empty-state">Новых заявок нет. Все свободны! ✅</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <table class="table table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>ID Сотрудника</th>
-                    <th>Тип отсутствия</th>
-                    <th>Дата начала</th>
-                    <th>Дата окончания</th>
-                    <th>Действие</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Jinja2 цикл: перебираем все заявки из базы -->
-                {% for req in pending_requests %}
-                <tr>
-                    <td>Сотрудник #{{ req.user_id }}</td>
-                    <td>{{ req.reason }}</td>
-                    <td>{{ req.start_date }}</td>
-                    <td>{{ req.end_date }}</td>
-                    <td>
-                        <div class="d-flex gap-2">
-                            <!-- Кнопка Одобрить -->
-                            <form action="/web/approve-absence/{{ req.id }}" method="POST">
-                                <button type="submit" class="btn btn-success btn-sm">Одобрить</button>
-                            </form>
-                            <!-- Кнопка Отклонить -->
-                            <form action="/web/reject-absence/{{ req.id }}" method="POST">
-                                <button type="submit" class="btn btn-danger btn-sm">Отклонить</button>
-                            </form>
-                        </div>
-                    </td>
-                </tr>
-                {% else %}
-                <!-- Если заявок нет -->
-                <tr>
-                    <td colspan="5" class="text-center text-muted py-3">Новых заявок нет. Все свободны!</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
 
-<!-- Карточка с историей уже рассмотренных заявок -->
-<div class="card mt-4 shadow-sm">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="card-title mb-0">История заявок</h5>
+    <!-- История заявок -->
+    <div class="card mt-3">
+        <div class="card-header accent-neutral">
+            <span class="card-title">🗂 История заявок</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Сотрудник</th>
+                            <th>Тип отсутствия</th>
+                            <th>Начало</th>
+                            <th>Окончание</th>
+                            <th>Статус</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in history_requests %}
+                        <tr>
+                            <td>Сотрудник #{{ req.user_id }}</td>
+                            <td>{{ req.reason }}</td>
+                            <td>{{ req.start_date }}</td>
+                            <td>{{ req.end_date }}</td>
+                            <td>
+                                {% if "APPROVED" in req.status|string %}
+                                    <span class="badge bg-success">Одобрено</span>
+                                {% elif "REJECTED" in req.status|string %}
+                                    <span class="badge bg-danger">Отклонено</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="empty-state">Пока нет рассмотренных заявок.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        <table class="table table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>ID Сотрудника</th>
-                    <th>Тип отсутствия</th>
-                    <th>Дата начала</th>
-                    <th>Дата окончания</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for req in history_requests %}
-                <tr>
-                    <td>Сотрудник #{{ req.user_id }}</td>
-                    <td>{{ req.reason }}</td>
-                    <td>{{ req.start_date }}</td>
-                    <td>{{ req.end_date }}</td>
-                    <td>
-                        {% if "APPROVED" in req.status|string %}
-                            <span class="badge bg-success">Одобрено</span>
-                        {% elif "REJECTED" in req.status|string %}
-                            <span class="badge bg-danger">Отклонено</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="5" class="text-center text-muted py-3">Пока нет рассмотренных заявок.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-</body>
-</html>
+</div>
+{% endblock %}

@@ -1,43 +1,78 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HR Портал</title>
-    <!-- Подключаем красивый дизайн от Bootstrap -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
+{% extends "base.html" %}
+{% block title %}Кабинет сотрудника · Удалёнка{% endblock %}
+{% block active_nav %}dashboard{% endblock %}
 
-<!-- Навигационная панель сверху -->
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container">
-        <!-- Верхняя панель навигации -->
-<div class="row mb-3 mt-3">
-    <div class="col-12">
-        <a href="/admin" class="btn btn-outline-secondary shadow-sm">
-            &larr; Вернуться в админ-панель
-        </a>
-    </div>
-</div>
-        <a class="navbar-brand" href="#">🏢 Корпоративный HR-портал</a>
-        <span class="navbar-text text-white">
-            Добро пожаловать, {{ user.full_name }}!
-        </span>
-    </div>
-</nav>
+{% block content %}
+{% set ns = namespace(pending=0) %}
+{% for r in user_requests %}{% if "PENDING" in r.status|string %}{% set ns.pending = ns.pending + 1 %}{% endif %}{% endfor %}
 
-<div class="container">
-    <div class="row">
-        <!-- Левая колонка: Учет времени -->
-        <div class="col-md-6 mb-4">
-            <div class="card shadow-sm h-100">
-                <div class="card-body text-center d-flex flex-column justify-content-center">
-                    <h5 class="card-title">Учет рабочего времени</h5>
-                    <p class="text-muted">Нажмите кнопку, когда приступите к работе.</p>
-                    
+<div class="page-wrap">
+
+    <div class="page-header">
+        <div>
+            <h1>Здравствуйте, {{ user.full_name if user else "коллега" }} 👋</h1>
+            <p class="lead">
+                {% if user %}{{ user.position or "Должность не указана" }} &bull; {{ user.role.value }}{% else %}Сотрудник не найден{% endif %}
+            </p>
+        </div>
+        <div class="actions">
+            <a href="/admin/calendar" class="btn btn-outline-secondary">📅 Общий календарь отсутствий</a>
+        </div>
+    </div>
+
+    {% if not user %}
+    <div class="alert alert-danger">
+        ⚠️ Сотрудник с таким ID не найден. Проверьте ссылку или вернитесь в
+        <a href="/admin">админ-панель</a>.
+    </div>
+    {% endif %}
+
+    {% if pwd_error == "wrong_current" %}
+    <div class="alert alert-danger">⚠️ Текущий пароль указан неверно.</div>
+    {% elif pwd_error == "too_short" %}
+    <div class="alert alert-danger">⚠️ Новый пароль слишком короткий — минимум 6 символов.</div>
+    {% elif pwd_error == "mismatch" %}
+    <div class="alert alert-danger">⚠️ Новый пароль и его повтор не совпадают.</div>
+    {% elif pwd_success %}
+    <div class="alert" style="background: var(--success-soft); color: var(--success-text); border-color: rgba(31,169,113,.2);">✅ Пароль успешно изменён.</div>
+    {% endif %}
+
+    {% if user %}
+    <div class="stat-grid">
+        <div class="stat-card">
+            <div class="icon success">🌴</div>
+            <div>
+                <div class="value">{{ user.vacation_balance if user else "—" }}</div>
+                <div class="label">дней отпуска осталось</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon warning">⏳</div>
+            <div>
+                <div class="value">{{ ns.pending }}</div>
+                <div class="label">заявок на рассмотрении</div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="icon brand">💳</div>
+            <div>
+                <div class="value">{{ "%.0f"|format(user.base_salary) if user else "—" }} ₽</div>
+                <div class="label">текущий оклад</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- Учёт времени -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header accent-info">
+                    <span class="card-title">⏱ Учёт рабочего времени</span>
+                </div>
+                <div class="card-body d-flex flex-column justify-content-center text-center">
+                    <p class="text-muted mb-3">Нажмите кнопку, когда приступаете к работе — система зафиксирует время и посчитает опоздание, если оно есть.</p>
                     <form action="/web/clock-in/{{ user.id }}" method="post">
-                        <button type="submit" class="btn btn-primary btn-lg w-100 mt-3">
+                        <button type="submit" class="btn btn-primary btn-lg w-100">
                             ▶ Начать рабочий день
                         </button>
                     </form>
@@ -45,145 +80,197 @@
             </div>
         </div>
 
-        <!-- Карточка запроса отсутствия -->
-<div class="card mt-4 shadow-sm">
-    <div class="card-header bg-secondary text-white">
-        <h5 class="card-title mb-0">Запросить отсутствие</h5>
-    </div>
-    <div class="card-body">
-        <form action="/web/request-absence/{{ user.id }}" method="POST">
-            <div class="mb-3">
-                <label class="form-label">Тип отсутствия</label>
-                <select name="reason" class="form-select" required>
-                    <option value="Оплачиваемый отпуск">Оплачиваемый отпуск</option>
-                    <option value="Больничный">Больничный</option>
-                    <option value="Отгул">Отгул (за свой счет)</option>
-                </select>
-            </div>
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">Дата начала</label>
-                    <input type="date" name="start_date" class="form-control" required>
+        <!-- Профиль -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header accent-neutral">
+                    <span class="card-title">🧾 Ваш профиль</span>
                 </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">Дата окончания</label>
-                    <input type="date" name="end_date" class="form-control" required>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-success">Отправить запрос на согласование</button>
-        </form>
-    </div>
-</div>
-
-        <!-- Правая колонка: Информация о сотруднике -->
-        <div class="col-md-6 mb-4">
-            <div class="card shadow-sm h-100">
                 <div class="card-body">
-                    <h5 class="card-title border-bottom pb-2">Ваш профиль</h5>
-                    <ul class="list-unstyled mt-3">
-                        <li class="mb-2"><strong>Должность:</strong> {{ user.role.value }}</li>
-                        <li class="mb-2"><strong>Остаток отпуска:</strong> {{ user.vacation_balance }} дней</li>
-                        <li class="mb-2"><strong>Текущий оклад:</strong> {{ user.base_salary }} ₽</li>
+                    <ul class="list-unstyled mb-0">
+                        <li class="d-flex justify-content-between py-2 border-bottom">
+                            <span class="text-muted">Должность</span>
+                            <strong>{{ user.position or "—" }}</strong>
+                        </li>
+                        <li class="d-flex justify-content-between py-2 border-bottom">
+                            <span class="text-muted">Роль в системе</span>
+                            <strong>{{ user.role.value if user else "—" }}</strong>
+                        </li>
+                        <li class="d-flex justify-content-between py-2 border-bottom">
+                            <span class="text-muted">Остаток отпуска</span>
+                            <strong>{{ user.vacation_balance if user else "—" }} дней</strong>
+                        </li>
+                        <li class="d-flex justify-content-between py-2 {% if current_user and current_user.id == user.id %}border-bottom{% endif %}">
+                            <span class="text-muted">Оклад</span>
+                            <strong>{{ "%.0f"|format(user.base_salary) if user else "—" }} ₽</strong>
+                        </li>
                     </ul>
-                    <a href="#" class="btn btn-outline-secondary btn-sm w-100 mt-2">Запросить отпуск</a>
+                    {% if current_user and current_user.id == user.id %}
+                    <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-3" data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+                        🔒 Сменить пароль
+                    </button>
+
+                    <div class="modal fade" id="changePasswordModal" tabindex="-1" aria-hidden="true">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Смена пароля</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                </div>
+                                <form action="/web/change-password/{{ user.id }}" method="POST">
+                                    <div class="modal-body text-start">
+                                        <div class="mb-3">
+                                            <label class="form-label">Текущий пароль</label>
+                                            <input type="password" class="form-control" name="current_password" required>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Новый пароль</label>
+                                            <input type="password" class="form-control" name="new_password" minlength="6" required>
+                                            <div class="form-text">Минимум 6 символов.</div>
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label">Повторите новый пароль</label>
+                                            <input type="password" class="form-control" name="new_password_repeat" minlength="6" required>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                        <button type="submit" class="btn btn-primary">Сохранить новый пароль</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Карточка с историей заявок -->
-<div class="card mt-4 shadow-sm">
-    <div class="card-header bg-info text-white">
-        <h5 class="card-title mb-0">Мои заявки</h5>
+    <!-- Заявка на отсутствие -->
+    <div class="card mt-3">
+        <div class="card-header accent-info">
+            <span class="card-title">📝 Запросить отсутствие</span>
+        </div>
+        <div class="card-body">
+            <form action="/web/request-absence/{{ user.id }}" method="POST">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label">Тип отсутствия</label>
+                        <select name="reason" class="form-select" required>
+                            <option value="Оплачиваемый отпуск">Оплачиваемый отпуск</option>
+                            <option value="Больничный">Больничный</option>
+                            <option value="Отгул">Отгул (за свой счёт)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Дата начала</label>
+                        <input type="date" name="start_date" class="form-control" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Дата окончания</label>
+                        <input type="date" name="end_date" class="form-control" required>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-success w-100">Отправить</button>
+                    </div>
+                </div>
+                <div class="form-text mt-2">Заявка уйдёт администратору на согласование. Даты отпуска спишутся с баланса только после одобрения.</div>
+            </form>
+        </div>
     </div>
-    <div class="card-body">
-        <table class="table table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>Причина</th>
-                    <th>Период</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>
-                <!-- Перебираем все заявки сотрудника -->
-                {% for req in user_requests %}
-                <tr>
-                    <td>{{ req.reason }}</td>
-                    <td>С {{ req.start_date }} по {{ req.end_date }}</td>
-                    <td>
-                        <!-- Используем фильтр |string для безопасного чтения статуса -->
-                        {% if "PENDING" in req.status|string %}
-                            <span class="badge bg-warning text-dark mb-2 d-block">На рассмотрении</span>
-                            
-                            <div class="d-flex gap-1">
-                                <!-- Кнопка Изменить (открывает всплывающее окно) -->
-                                <button type="button" class="btn btn-outline-primary btn-sm w-50" data-bs-toggle="modal" data-bs-target="#editModal{{ req.id }}">
-                                    Изменить
-                                </button>
-                                
-                                <!-- Кнопка Удалить -->
-                                <form action="/web/delete-absence/{{ req.id }}" method="POST" class="w-50 m-0">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm w-100">Удалить</button>
-                                </form>
-                            </div>
 
-                            <!-- Всплывающее окно (Модалка) для редактирования заявки -->
-                            <div class="modal fade" id="editModal{{ req.id }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog">
-                                    <div class="modal-content">
-                                        <div class="modal-header">
-                                            <h5 class="modal-title">Редактирование заявки</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+    <!-- Мои заявки -->
+    <div class="card mt-3">
+        <div class="card-header accent-neutral">
+            <span class="card-title">📋 Мои заявки</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Причина</th>
+                            <th>Период</th>
+                            <th>Статус</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for req in user_requests %}
+                        <tr>
+                            <td>{{ req.reason }}</td>
+                            <td>{{ req.start_date }} — {{ req.end_date }}</td>
+                            <td>
+                                {% if "PENDING" in req.status|string %}
+                                    <span class="badge bg-warning">На рассмотрении</span>
+                                {% elif "APPROVED" in req.status|string %}
+                                    <span class="badge bg-success">Одобрено</span>
+                                {% elif "REJECTED" in req.status|string %}
+                                    <span class="badge bg-danger">Отклонено</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ req.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if "PENDING" in req.status|string %}
+                                <div class="d-flex gap-1 justify-content-end">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#editModal{{ req.id }}">
+                                        Изменить
+                                    </button>
+                                    <form action="/web/delete-absence/{{ req.id }}" method="POST" class="m-0">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+                                    </form>
+                                </div>
+
+                                <div class="modal fade" id="editModal{{ req.id }}" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Редактирование заявки</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+                                            </div>
+                                            <form action="/web/edit-absence/{{ req.id }}" method="POST">
+                                                <div class="modal-body text-start">
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Причина</label>
+                                                        <select class="form-select" name="reason" required>
+                                                            <option value="Оплачиваемый отпуск" {% if req.reason == 'Оплачиваемый отпуск' %}selected{% endif %}>Оплачиваемый отпуск</option>
+                                                            <option value="Больничный" {% if req.reason == 'Больничный' %}selected{% endif %}>Больничный</option>
+                                                            <option value="Отгул" {% if req.reason == 'Отгул' %}selected{% endif %}>Отгул</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Дата начала</label>
+                                                        <input type="date" class="form-control" name="start_date" value="{{ req.start_date }}" required>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label">Дата окончания</label>
+                                                        <input type="date" class="form-control" name="end_date" value="{{ req.end_date }}" required>
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                                                    <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                                                </div>
+                                            </form>
                                         </div>
-                                        <form action="/web/edit-absence/{{ req.id }}" method="POST">
-                                            <div class="modal-body text-start">
-                                                <div class="mb-3">
-                                                    <label class="form-label">Причина</label>
-                                                    <select class="form-select" name="reason" required>
-                                                        <option value="Оплачиваемый отпуск" {% if req.reason == 'Оплачиваемый отпуск' %}selected{% endif %}>Оплачиваемый отпуск</option>
-                                                        <option value="Больничный" {% if req.reason == 'Больничный' %}selected{% endif %}>Больничный</option>
-                                                        <option value="Отгул" {% if req.reason == 'Отгул' %}selected{% endif %}>Отгул</option>
-                                                    </select>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label">Дата начала</label>
-                                                    <input type="date" class="form-control" name="start_date" value="{{ req.start_date }}" required>
-                                                </div>
-                                                <div class="mb-3">
-                                                    <label class="form-label">Дата окончания</label>
-                                                    <input type="date" class="form-control" name="end_date" value="{{ req.end_date }}" required>
-                                                </div>
-                                            </div>
-                                            <div class="modal-footer">
-                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
-                                                <button type="submit" class="btn btn-primary">Сохранить изменения</button>
-                                            </div>
-                                        </form>
                                     </div>
                                 </div>
-                            </div>
-                            
-                        {% elif "APPROVED" in req.status|string %}
-                            <span class="badge bg-success">Одобрено</span>
-                        {% elif "REJECTED" in req.status|string %}
-                            <span class="badge bg-danger">Отклонено</span>
+                                {% endif %}
+                            </td>
+                        </tr>
                         {% else %}
-                            <span class="badge bg-secondary">{{ req.status }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="3" class="text-center text-muted py-3">Вы еще не отправляли заявок.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <tr>
+                            <td colspan="4" class="empty-state">Вы ещё не отправляли заявок.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% endif %}
 
-</body>
-</html>
+</div>
+{% endblock %}

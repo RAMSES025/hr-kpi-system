@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Удалёнка · HR{% endblock %}</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        /* ============ ДИЗАЙН-СИСТЕМА «УДАЛЁНКА» ============
+           Общие переменные и стили для всех страниц приложения.
+           Меняйте цвета/отступы здесь — они применятся везде. */
+        :root {
+            --bg: #f4f5f9;
+            --surface: #ffffff;
+            --border: #e6e8ee;
+            --text: #1c2130;
+            --text-muted: #6b7280;
+            --text-faint: #9aa1ac;
+
+            --brand: #4f6ef7;
+            --brand-dark: #3c56d6;
+            --brand-soft: #eef1ff;
+
+            --success: #1fa971;
+            --success-soft: #e4f7ee;
+            --success-text: #0f6b46;
+
+            --warning: #f0a202;
+            --warning-soft: #fef3dd;
+            --warning-text: #92600a;
+
+            --danger: #e5484d;
+            --danger-soft: #fdeaea;
+            --danger-text: #b42318;
+
+            --neutral-soft: #eef0f3;
+            --neutral-text: #55606e;
+
+            --radius-lg: 16px;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow-sm: 0 1px 2px rgba(16, 24, 40, .04);
+            --shadow: 0 1px 3px rgba(16, 24, 40, .06), 0 2px 8px rgba(16, 24, 40, .04);
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        }
+
+        h1, h2, h3, h4, h5, h6 { font-weight: 700; letter-spacing: -0.01em; }
+
+        a { text-decoration: none; }
+
+        /* ---------- Верхняя навигация ---------- */
+        .app-nav {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 0;
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+        .app-nav .inner {
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .app-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 800;
+            font-size: 17px;
+            color: var(--text);
+        }
+        .app-brand .mark {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            box-shadow: var(--shadow);
+        }
+        .app-brand .sub {
+            font-weight: 500;
+            color: var(--text-faint);
+            font-size: 13px;
+            margin-left: 2px;
+        }
+        .app-nav-links {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .app-nav-links a {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            transition: background .15s, color .15s;
+        }
+        .app-nav-links a:hover { background: var(--bg); color: var(--text); }
+        .app-nav-links a.active { background: var(--brand-soft); color: var(--brand-dark); }
+        .app-nav-tag {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-faint);
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 5px 12px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        .app-user-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-shrink: 0;
+        }
+        .app-user-info { text-align: right; line-height: 1.25; }
+        .app-user-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+        .app-user-role { font-size: 11.5px; color: var(--text-faint); text-transform: capitalize; }
+
+        .page-wrap { max-width: 1320px; margin: 0 auto; padding: 28px 24px 64px; }
+
+        .page-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .page-header h1 { font-size: 24px; margin: 0 0 4px; }
+        .page-header .lead { color: var(--text-muted); font-size: 14.5px; margin: 0; }
+        .page-header .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        /* ---------- Карточки ---------- */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+        }
+        .card-header {
+            background: transparent !important;
+            color: var(--text) !important;
+            border-bottom: 1px solid var(--border);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .card-header .card-title { margin: 0; font-size: 15px; font-weight: 700; }
+        .card-header.accent-warning { border-left: 3px solid var(--warning); }
+        .card-header.accent-info { border-left: 3px solid var(--brand); }
+        .card-header.accent-neutral { border-left: 3px solid var(--text-faint); }
+        .card-body { padding: 20px; }
+
+        /* ---------- Статистические плитки ---------- */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 14px;
+            margin-bottom: 22px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px 18px;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .stat-card .icon {
+            width: 42px; height: 42px; border-radius: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 19px; flex-shrink: 0;
+        }
+        .stat-card .icon.brand { background: var(--brand-soft); }
+        .stat-card .icon.warning { background: var(--warning-soft); }
+        .stat-card .icon.success { background: var(--success-soft); }
+        .stat-card .icon.neutral { background: var(--neutral-soft); }
+        .stat-card .value { font-size: 21px; font-weight: 800; line-height: 1.1; }
+        .stat-card .label { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+
+        /* ---------- Кнопки ---------- */
+        .btn { border-radius: var(--radius-sm); font-weight: 600; font-size: 14px; padding: 8px 16px; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-lg { padding: 12px 20px; }
+        .btn-primary, .btn-success, .btn-danger { border: none; box-shadow: var(--shadow-sm); }
+        .btn-primary { background: var(--brand); }
+        .btn-primary:hover, .btn-primary:focus { background: var(--brand-dark); }
+        .btn-success { background: var(--success); }
+        .btn-success:hover, .btn-success:focus { background: #178a5c; }
+        .btn-danger { background: var(--danger); }
+        .btn-danger:hover, .btn-danger:focus { background: #cf3d42; }
+        .btn-outline-secondary { border-color: var(--border); color: var(--text-muted); }
+        .btn-outline-secondary:hover { background: var(--bg); color: var(--text); border-color: var(--border); }
+        .btn-outline-primary { border-color: var(--brand); color: var(--brand); }
+        .btn-outline-primary:hover { background: var(--brand); border-color: var(--brand); }
+        .btn-outline-danger { border-color: var(--danger); color: var(--danger); }
+        .btn-outline-danger:hover { background: var(--danger); border-color: var(--danger); }
+        .btn-outline-light { border-color: rgba(255,255,255,.4); color: #fff; }
+
+        /* ---------- Формы ---------- */
+        .form-label { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 5px; }
+        .form-control, .form-select {
+            border-radius: var(--radius-sm);
+            border-color: var(--border);
+            font-size: 14.5px;
+            padding: 9px 12px;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--brand);
+            box-shadow: 0 0 0 3px var(--brand-soft);
+        }
+        .form-text { font-size: 12.5px; }
+
+        /* ---------- Таблицы ---------- */
+        .table { margin-bottom: 0; }
+        .table thead th {
+            font-size: 11.5px;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            color: var(--text-faint);
+            font-weight: 700;
+            border-bottom: 1px solid var(--border);
+            padding: 10px 12px;
+            white-space: nowrap;
+        }
+        .table td { padding: 12px; font-size: 14px; vertical-align: middle; border-bottom: 1px solid var(--border); }
+        .table tbody tr:last-child td { border-bottom: none; }
+        .table-hover tbody tr:hover { background: var(--bg); }
+
+        /* ---------- Бейджи ---------- */
+        .badge { font-weight: 600; font-size: 11.5px; padding: 5px 10px; border-radius: 999px; }
+        .badge.bg-warning { background: var(--warning-soft) !important; color: var(--warning-text) !important; }
+        .badge.bg-success { background: var(--success-soft) !important; color: var(--success-text) !important; }
+        .badge.bg-danger  { background: var(--danger-soft) !important; color: var(--danger-text) !important; }
+        .badge.bg-secondary, .badge.bg-info { background: var(--neutral-soft) !important; color: var(--neutral-text) !important; }
+
+        /* ---------- Аватары ---------- */
+        .avatar-sm {
+            width: 34px; height: 34px; border-radius: 999px;
+            background: var(--brand-soft); color: var(--brand-dark);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13.5px; flex-shrink: 0;
+        }
+
+        /* ---------- Пустые состояния ---------- */
+        .empty-state { text-align: center; padding: 34px 16px; color: var(--text-faint); font-size: 14px; }
+
+        /* ---------- Уведомления ---------- */
+        .alert { border-radius: var(--radius); border: 1px solid transparent; font-size: 14px; }
+        .alert-danger { background: var(--danger-soft); color: var(--danger-text); border-color: rgba(229,72,77,.2); }
+
+        .modal-content { border-radius: var(--radius-lg); border: none; }
+        .modal-header, .modal-footer { border-color: var(--border); }
+    </style>
+    {% block extra_style %}{% endblock %}
+</head>
+<body>
+<!-- Дочерний шаблон переопределяет этот блок (dashboard/admin/calendar), чтобы подсветить активный пункт меню в шапке -->
+<span style="display:none">{% block active_nav %}{% endblock %}</span>
+
+<nav class="app-nav">
+    <div class="inner">
+        <div class="app-brand">
+            <span class="mark">🏠</span>
+            Удалёнка <span class="sub">HR-портал</span>
+        </div>
+        {% if current_user %}
+        <div class="app-nav-links">
+            <a href="/dashboard/{{ current_user.id }}" class="{% if self.active_nav() == 'dashboard' %}active{% endif %}">🧑‍💻 Мой кабинет</a>
+            <a href="/admin/calendar" class="{% if self.active_nav() == 'calendar' %}active{% endif %}">📅 Календарь</a>
+            {% if current_user.role.value != "employee" %}
+            <a href="/admin" class="{% if self.active_nav() == 'admin' %}active{% endif %}">🛡️ Админ-панель</a>
+            {% endif %}
+        </div>
+        <div class="app-user-box">
+            <div class="app-user-info">
+                <div class="app-user-name">{{ current_user.full_name }}</div>
+                <div class="app-user-role">{{ current_user.role.value }}</div>
+            </div>
+            <form action="/logout" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-secondary btn-sm">Выйти</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+</nav>
+
+{% block content %}{% endblock %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_script %}{% endblock %}
+</body>
+</html>
